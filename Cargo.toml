@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+exclude = ["contracts/lumix-aggregator"]
+members = [
+    "crates/lumix-core",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+soroban-sdk = "27.0.6"
+lumix-core = { path = "crates/lumix-core" }
+lumix-interfaces = { path = "crates/lumix-interfaces" }
+proptest = "1.5"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

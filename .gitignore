@@ -1,0 +1,11 @@
+target
+.soroban
+.stellar
+Cargo.lock
+!contracts/lumix-aggregator/Cargo.lock
+fuzz/artifacts
+fuzz/corpus
+**/*.wasm
+mutants.out*
+.DS_Store
+scripts/deploy.sh

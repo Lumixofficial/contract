@@ -1,0 +1,13 @@
+[package]
+name = "lumix-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+doctest = false
+
+[dev-dependencies]
+proptest = { workspace = true }
