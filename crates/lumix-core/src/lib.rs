@@ -13,3 +13,6 @@ pub use math::*;
 pub use options::*;
 pub use position::*;
 pub use shares::*;
+
+#[cfg(test)]
+mod prop_tests;
