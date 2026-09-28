@@ -3,6 +3,7 @@ resolver = "2"
 exclude = ["contracts/lumix-aggregator"]
 members = [
     "crates/lumix-core",
+    "crates/lumix-interfaces",
 ]
 
 [workspace.package]
