@@ -502,3 +502,5 @@ impl Oracle {
     }
 }
 
+#[cfg(test)]
+mod test;
