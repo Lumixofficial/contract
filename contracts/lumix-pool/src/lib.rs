@@ -730,3 +730,5 @@ impl Pool {
     }
 }
 
+#[cfg(test)]
+mod test;
