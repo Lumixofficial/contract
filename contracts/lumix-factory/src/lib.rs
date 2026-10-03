@@ -167,3 +167,5 @@ impl Factory {
     }
 }
 
+#[cfg(test)]
+mod test;
