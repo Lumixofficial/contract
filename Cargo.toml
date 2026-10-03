@@ -6,6 +6,7 @@ members = [
     "crates/lumix-interfaces",
     "contracts/lumix-oracle",
     "contracts/lumix-pool",
+    "contracts/lumix-factory",
 ]
 
 [workspace.package]
