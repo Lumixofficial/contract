@@ -1330,3 +1330,5 @@ impl Market {
     }
 }
 
+#[cfg(test)]
+mod test;
