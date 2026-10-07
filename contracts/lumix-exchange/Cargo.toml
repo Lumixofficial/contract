@@ -1,0 +1,23 @@
+[package]
+name = "lumix-exchange"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+lumix-core = { workspace = true }
+lumix-interfaces = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+lumix-core = { workspace = true }
+lumix-market = { path = "../lumix-market" }
+lumix-pool = { path = "../lumix-pool" }
+lumix-oracle = { path = "../lumix-oracle" }
+lumix-factory = { path = "../lumix-factory" }

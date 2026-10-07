@@ -7,6 +7,7 @@ members = [
     "contracts/lumix-oracle",
     "contracts/lumix-pool",
     "contracts/lumix-market",
+    "contracts/lumix-exchange",
     "contracts/lumix-factory",
 ]
 
