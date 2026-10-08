@@ -535,3 +535,5 @@ impl Exchange {
     }
 }
 
+#[cfg(test)]
+mod test;
