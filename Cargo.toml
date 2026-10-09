@@ -9,6 +9,7 @@ members = [
     "contracts/lumix-market",
     "contracts/lumix-exchange",
     "contracts/lumix-factory",
+    "contracts/lumix-options",
 ]
 
 [workspace.package]
