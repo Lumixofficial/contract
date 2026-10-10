@@ -725,3 +725,5 @@ impl Options {
     }
 }
 
+#[cfg(test)]
+mod test;
