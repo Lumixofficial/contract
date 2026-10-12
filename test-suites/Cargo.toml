@@ -1,0 +1,27 @@
+[package]
+name = "lumix-test-suites"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+lumix-core = { workspace = true }
+lumix-oracle = { path = "../contracts/lumix-oracle" }
+lumix-pool = { path = "../contracts/lumix-pool" }
+lumix-market = { path = "../contracts/lumix-market" }
+lumix-exchange = { path = "../contracts/lumix-exchange" }
+lumix-factory = { path = "../contracts/lumix-factory" }
+
+lumix-options = { path = "../contracts/lumix-options" }
+lumix-interfaces = { workspace = true }
+
+[features]
+wasm-tests = []
+
+[dev-dependencies]
+proptest = { workspace = true }
