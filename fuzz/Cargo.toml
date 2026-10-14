@@ -20,3 +20,10 @@ path = "fuzz_targets/oracle_history.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "perp_lifecycle"
+path = "fuzz_targets/perp_lifecycle.rs"
+test = false
+doc = false
+bench = false
