@@ -1,0 +1,22 @@
+[package]
+name = "lumix-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+lumix-test-suites = { path = "../test-suites" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "oracle_history"
+path = "fuzz_targets/oracle_history.rs"
+test = false
+doc = false
+bench = false
