@@ -27,3 +27,10 @@ path = "fuzz_targets/perp_lifecycle.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "option_lifecycle"
+path = "fuzz_targets/option_lifecycle.rs"
+test = false
+doc = false
+bench = false
