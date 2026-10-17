@@ -1,0 +1,962 @@
+#!/usr/bin/env bash
+
+# Lumix deploy + initialize script.
+#
+# 1. Complete the TESTNET_* and MAINNET_* profiles once.
+# 2. Select the deployment profile with DEPLOY_TARGET.
+# 3. Run: ./scripts/deploy.sh
+#
+# Do not edit LUMIX_* variables: they are derived from the selected profile.
+# Every profile value may also be overridden through the environment.
+# Stellar asset amounts use 7 decimals. Oracle/USD values use 14 decimals.
+
+# ============================================================================
+# SELECT ONLY ONE PROFILE: testnet or mainnet
+# ============================================================================
+DEPLOY_TARGET="${DEPLOY_TARGET:-testnet}"
+
+# ============================================================================
+# TESTNET PROFILE
+# Free SDF RPC; the script stores it under the `testnet` Stellar CLI network.
+# The official testnet USDC asset is provided as the default short asset.
+# ============================================================================
+TESTNET_NETWORK="${TESTNET_NETWORK:-testnet}"
+TESTNET_RPC_URL="${TESTNET_RPC_URL:-https://soroban-testnet.stellar.org}"
+TESTNET_RPC_HEADER="${TESTNET_RPC_HEADER:-}"
+TESTNET_NETWORK_PASSPHRASE="${TESTNET_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
+TESTNET_CONFIGURE_NETWORK_ALIAS="${TESTNET_CONFIGURE_NETWORK_ALIAS:-true}"
+
+TESTNET_DEPLOYER_SOURCE="${TESTNET_DEPLOYER_SOURCE:-alice}"
+TESTNET_ADMIN_SOURCE="${TESTNET_ADMIN_SOURCE:-alice}"
+TESTNET_KEEPER_SOURCE="${TESTNET_KEEPER_SOURCE:-alice}"
+TESTNET_FEEDER_SOURCE="${TESTNET_FEEDER_SOURCE:-}"       # blank = keeper; this account may push oracle prices
+TESTNET_ADMIN_ADDRESS="${TESTNET_ADMIN_ADDRESS:-}"       # blank = derive from TESTNET_ADMIN_SOURCE
+TESTNET_KEEPER_ADDRESS="${TESTNET_KEEPER_ADDRESS:-}"     # blank = derive from TESTNET_KEEPER_SOURCE
+TESTNET_FEEDER_ADDRESS="${TESTNET_FEEDER_ADDRESS:-}"     # blank = derive from TESTNET_FEEDER_SOURCE, or the keeper
+TESTNET_TREASURY_ADDRESS="${TESTNET_TREASURY_ADDRESS:-}" # blank = admin address
+
+TESTNET_MARKET_SLUG="${TESTNET_MARKET_SLUG:-xlm-usdc}"
+TESTNET_LONG_ASSET="${TESTNET_LONG_ASSET:-native}"
+TESTNET_SHORT_ASSET="${TESTNET_SHORT_ASSET:-USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5}"
+TESTNET_INDEX_ASSET="${TESTNET_INDEX_ASSET:-native}"
+TESTNET_LONG_PRICE="${TESTNET_LONG_PRICE:-25000000000000}"   # example $0.25; update before deployment
+TESTNET_SHORT_PRICE="${TESTNET_SHORT_PRICE:-100000000000000}" # $1.00
+TESTNET_INDEX_PRICE="${TESTNET_INDEX_PRICE:-}"               # only used when index differs from long/short
+TESTNET_DEPLOY_ASSET_CONTRACTS="${TESTNET_DEPLOY_ASSET_CONTRACTS:-true}"
+
+TESTNET_ORACLE_MAX_AGE="${TESTNET_ORACLE_MAX_AGE:-600}"
+TESTNET_ORACLE_MAX_DEVIATION_BPS="${TESTNET_ORACLE_MAX_DEVIATION_BPS:-2000}"
+TESTNET_ORACLE_SPREAD_BPS="${TESTNET_ORACLE_SPREAD_BPS:-2}"
+TESTNET_SHARE_NAME="${TESTNET_SHARE_NAME:-Lumix Market Shares}"
+TESTNET_SHARE_SYMBOL="${TESTNET_SHARE_SYMBOL:-LMX-GM}"
+TESTNET_POOL_RESERVE_FACTOR_BPS="${TESTNET_POOL_RESERVE_FACTOR_BPS:-8500}"
+TESTNET_POOL_PROTOCOL_FEE_BPS="${TESTNET_POOL_PROTOCOL_FEE_BPS:-2000}"
+TESTNET_POOL_MAX_USD="${TESTNET_POOL_MAX_USD:-0}"
+TESTNET_MARKET_MAX_LEVERAGE="${TESTNET_MARKET_MAX_LEVERAGE:-20}"
+TESTNET_MARKET_MMR_BPS="${TESTNET_MARKET_MMR_BPS:-500}"
+TESTNET_MARKET_MAX_OI_LONG_USD="${TESTNET_MARKET_MAX_OI_LONG_USD:-0}"
+TESTNET_MARKET_MAX_OI_SHORT_USD="${TESTNET_MARKET_MAX_OI_SHORT_USD:-0}"
+TESTNET_MARKET_SYNTHETIC="${TESTNET_MARKET_SYNTHETIC:-false}"
+
+TESTNET_ENABLE_OPTIONS="${TESTNET_ENABLE_OPTIONS:-false}"
+TESTNET_OPTIONS_EXPIRY="${TESTNET_OPTIONS_EXPIRY:-0}"
+TESTNET_SEED_LIQUIDITY="${TESTNET_SEED_LIQUIDITY:-false}"
+TESTNET_LP_SOURCE="${TESTNET_LP_SOURCE:-alice}"
+TESTNET_LP_ADDRESS="${TESTNET_LP_ADDRESS:-}"
+TESTNET_INITIAL_LONG_AMOUNT="${TESTNET_INITIAL_LONG_AMOUNT:-0}"
+TESTNET_INITIAL_SHORT_AMOUNT="${TESTNET_INITIAL_SHORT_AMOUNT:-0}"
+TESTNET_INITIAL_MIN_SHARES="${TESTNET_INITIAL_MIN_SHARES:-0}"
+
+TESTNET_RUN_TESTS="${TESTNET_RUN_TESTS:-true}"
+TESTNET_AUTO_CREATE_TEST_IDENTITIES="${TESTNET_AUTO_CREATE_TEST_IDENTITIES:-true}"
+TESTNET_ACTIVATE_PROTOCOL="${TESTNET_ACTIVATE_PROTOCOL:-false}"
+TESTNET_REQUIRE_LEDGER_CHECKPOINT="${TESTNET_REQUIRE_LEDGER_CHECKPOINT:-true}"
+TESTNET_ALIAS_PREFIX="${TESTNET_ALIAS_PREFIX:-lumix-testnet-${TESTNET_MARKET_SLUG}}"
+TESTNET_ALLOW_UNSAFE_MAINNET="${TESTNET_ALLOW_UNSAFE_MAINNET:-false}"
+TESTNET_DEPLOY_CONFIRMATION="${TESTNET_DEPLOY_CONFIRMATION:-}"
+
+# ============================================================================
+# MAINNET PROFILE
+# Free public RPC listed by Stellar. Public endpoints can be rate-limited, so a
+# dedicated provider is still recommended for production listener workloads.
+# The mainnet XLM oracle price is deliberately blank: set a fresh value before use.
+# ============================================================================
+MAINNET_NETWORK="${MAINNET_NETWORK:-mainnet}"
+MAINNET_RPC_URL="${MAINNET_RPC_URL:-https://mainnet.sorobanrpc.com}"
+MAINNET_RPC_HEADER="${MAINNET_RPC_HEADER:-}"
+MAINNET_NETWORK_PASSPHRASE="${MAINNET_NETWORK_PASSPHRASE:-Public Global Stellar Network ; September 2015}"
+MAINNET_CONFIGURE_NETWORK_ALIAS="${MAINNET_CONFIGURE_NETWORK_ALIAS:-true}"
+
+MAINNET_DEPLOYER_SOURCE="${MAINNET_DEPLOYER_SOURCE:-alice}"
+MAINNET_ADMIN_SOURCE="${MAINNET_ADMIN_SOURCE:-alice}"
+MAINNET_KEEPER_SOURCE="${MAINNET_KEEPER_SOURCE:-alice}"
+MAINNET_FEEDER_SOURCE="${MAINNET_FEEDER_SOURCE:-}"       # blank = keeper; this account may push oracle prices
+MAINNET_ADMIN_ADDRESS="${MAINNET_ADMIN_ADDRESS:-}"       # blank = derive from MAINNET_ADMIN_SOURCE
+MAINNET_KEEPER_ADDRESS="${MAINNET_KEEPER_ADDRESS:-}"     # blank = derive from MAINNET_KEEPER_SOURCE
+MAINNET_FEEDER_ADDRESS="${MAINNET_FEEDER_ADDRESS:-}"     # blank = derive from MAINNET_FEEDER_SOURCE, or the keeper
+MAINNET_TREASURY_ADDRESS="${MAINNET_TREASURY_ADDRESS:-}" # blank = admin address
+
+MAINNET_MARKET_SLUG="${MAINNET_MARKET_SLUG:-xlm-usdc}"
+MAINNET_LONG_ASSET="${MAINNET_LONG_ASSET:-native}"
+MAINNET_SHORT_ASSET="${MAINNET_SHORT_ASSET:-USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN}"
+MAINNET_INDEX_ASSET="${MAINNET_INDEX_ASSET:-native}"
+MAINNET_LONG_PRICE="${MAINNET_LONG_PRICE:-}"             # REQUIRED: fresh XLM/USD price, 14 decimals
+MAINNET_SHORT_PRICE="${MAINNET_SHORT_PRICE:-100000000000000}"
+MAINNET_INDEX_PRICE="${MAINNET_INDEX_PRICE:-}"
+MAINNET_DEPLOY_ASSET_CONTRACTS="${MAINNET_DEPLOY_ASSET_CONTRACTS:-true}"
+
+MAINNET_ORACLE_MAX_AGE="${MAINNET_ORACLE_MAX_AGE:-600}"
+MAINNET_ORACLE_MAX_DEVIATION_BPS="${MAINNET_ORACLE_MAX_DEVIATION_BPS:-2000}"
+MAINNET_ORACLE_SPREAD_BPS="${MAINNET_ORACLE_SPREAD_BPS:-2}"
+MAINNET_SHARE_NAME="${MAINNET_SHARE_NAME:-Lumix Market Shares}"
+MAINNET_SHARE_SYMBOL="${MAINNET_SHARE_SYMBOL:-LMX-GM}"
+MAINNET_POOL_RESERVE_FACTOR_BPS="${MAINNET_POOL_RESERVE_FACTOR_BPS:-8500}"
+MAINNET_POOL_PROTOCOL_FEE_BPS="${MAINNET_POOL_PROTOCOL_FEE_BPS:-2000}"
+MAINNET_POOL_MAX_USD="${MAINNET_POOL_MAX_USD:-0}"
+MAINNET_MARKET_MAX_LEVERAGE="${MAINNET_MARKET_MAX_LEVERAGE:-20}"
+MAINNET_MARKET_MMR_BPS="${MAINNET_MARKET_MMR_BPS:-500}"
+MAINNET_MARKET_MAX_OI_LONG_USD="${MAINNET_MARKET_MAX_OI_LONG_USD:-0}"
+MAINNET_MARKET_MAX_OI_SHORT_USD="${MAINNET_MARKET_MAX_OI_SHORT_USD:-0}"
+MAINNET_MARKET_SYNTHETIC="${MAINNET_MARKET_SYNTHETIC:-false}"
+
+MAINNET_ENABLE_OPTIONS="${MAINNET_ENABLE_OPTIONS:-false}"
+MAINNET_OPTIONS_EXPIRY="${MAINNET_OPTIONS_EXPIRY:-0}"
+MAINNET_SEED_LIQUIDITY="${MAINNET_SEED_LIQUIDITY:-false}"
+MAINNET_LP_SOURCE="${MAINNET_LP_SOURCE:-alice}"
+MAINNET_LP_ADDRESS="${MAINNET_LP_ADDRESS:-}"
+MAINNET_INITIAL_LONG_AMOUNT="${MAINNET_INITIAL_LONG_AMOUNT:-0}"
+MAINNET_INITIAL_SHORT_AMOUNT="${MAINNET_INITIAL_SHORT_AMOUNT:-0}"
+MAINNET_INITIAL_MIN_SHARES="${MAINNET_INITIAL_MIN_SHARES:-0}"
+
+MAINNET_RUN_TESTS="${MAINNET_RUN_TESTS:-true}"
+MAINNET_AUTO_CREATE_TEST_IDENTITIES="${MAINNET_AUTO_CREATE_TEST_IDENTITIES:-false}"
+MAINNET_ACTIVATE_PROTOCOL="${MAINNET_ACTIVATE_PROTOCOL:-false}"
+MAINNET_REQUIRE_LEDGER_CHECKPOINT="${MAINNET_REQUIRE_LEDGER_CHECKPOINT:-true}"
+MAINNET_ALIAS_PREFIX="${MAINNET_ALIAS_PREFIX:-lumix-mainnet-${MAINNET_MARKET_SLUG}}"
+
+# Mainnet remains intentionally locked pending an independent contract audit.
+MAINNET_ALLOW_UNSAFE_MAINNET="${MAINNET_ALLOW_UNSAFE_MAINNET:-false}"
+MAINNET_DEPLOY_CONFIRMATION="${MAINNET_DEPLOY_CONFIRMATION:-}"
+
+# ---------- SHARED OUTPUT SETTINGS ----------
+DEPLOY_OUTPUT_DIR="${DEPLOY_OUTPUT_DIR:-deployments}"
+DEPLOY_STATE_FILE="${DEPLOY_STATE_FILE:-}"       # blank = deployments/<network>-<market>.state.env
+DEPLOY_MANIFEST_FILE="${DEPLOY_MANIFEST_FILE:-}" # blank = deployments/<network>-<market>.manifest.json
+
+# ---------- INTERNAL PROFILE MAPPING: DO NOT EDIT ----------
+case "$DEPLOY_TARGET" in
+  testnet) PROFILE_PREFIX="TESTNET" ;;
+  mainnet) PROFILE_PREFIX="MAINNET" ;;
+  *) printf 'ERROR: DEPLOY_TARGET must be testnet or mainnet (got: %s)\n' "$DEPLOY_TARGET" >&2; exit 1 ;;
+esac
+
+profile_value() {
+  local profile_variable="${PROFILE_PREFIX}_$1"
+  printf '%s' "${!profile_variable}"
+}
+
+LUMIX_NETWORK="$(profile_value NETWORK)"
+LUMIX_RPC_URL="$(profile_value RPC_URL)"
+LUMIX_RPC_HEADER="$(profile_value RPC_HEADER)"
+LUMIX_NETWORK_PASSPHRASE="$(profile_value NETWORK_PASSPHRASE)"
+LUMIX_CONFIGURE_NETWORK_ALIAS="$(profile_value CONFIGURE_NETWORK_ALIAS)"
+LUMIX_DEPLOYER_SOURCE="$(profile_value DEPLOYER_SOURCE)"
+LUMIX_ADMIN_SOURCE="$(profile_value ADMIN_SOURCE)"
+LUMIX_KEEPER_SOURCE="$(profile_value KEEPER_SOURCE)"
+LUMIX_FEEDER_SOURCE="$(profile_value FEEDER_SOURCE)"
+LUMIX_ADMIN_ADDRESS="$(profile_value ADMIN_ADDRESS)"
+LUMIX_KEEPER_ADDRESS="$(profile_value KEEPER_ADDRESS)"
+LUMIX_FEEDER_ADDRESS="$(profile_value FEEDER_ADDRESS)"
+LUMIX_TREASURY_ADDRESS="$(profile_value TREASURY_ADDRESS)"
+LUMIX_MARKET_SLUG="$(profile_value MARKET_SLUG)"
+LUMIX_LONG_ASSET="$(profile_value LONG_ASSET)"
+LUMIX_SHORT_ASSET="$(profile_value SHORT_ASSET)"
+LUMIX_INDEX_ASSET="$(profile_value INDEX_ASSET)"
+LUMIX_LONG_PRICE="$(profile_value LONG_PRICE)"
+LUMIX_SHORT_PRICE="$(profile_value SHORT_PRICE)"
+LUMIX_INDEX_PRICE="$(profile_value INDEX_PRICE)"
+LUMIX_DEPLOY_ASSET_CONTRACTS="$(profile_value DEPLOY_ASSET_CONTRACTS)"
+LUMIX_ORACLE_MAX_AGE="$(profile_value ORACLE_MAX_AGE)"
+LUMIX_ORACLE_MAX_DEVIATION_BPS="$(profile_value ORACLE_MAX_DEVIATION_BPS)"
+LUMIX_ORACLE_SPREAD_BPS="$(profile_value ORACLE_SPREAD_BPS)"
+LUMIX_SHARE_NAME="$(profile_value SHARE_NAME)"
+LUMIX_SHARE_SYMBOL="$(profile_value SHARE_SYMBOL)"
+LUMIX_POOL_RESERVE_FACTOR_BPS="$(profile_value POOL_RESERVE_FACTOR_BPS)"
+LUMIX_POOL_PROTOCOL_FEE_BPS="$(profile_value POOL_PROTOCOL_FEE_BPS)"
+LUMIX_POOL_MAX_USD="$(profile_value POOL_MAX_USD)"
+LUMIX_MARKET_MAX_LEVERAGE="$(profile_value MARKET_MAX_LEVERAGE)"
+LUMIX_MARKET_MMR_BPS="$(profile_value MARKET_MMR_BPS)"
+LUMIX_MARKET_MAX_OI_LONG_USD="$(profile_value MARKET_MAX_OI_LONG_USD)"
+LUMIX_MARKET_MAX_OI_SHORT_USD="$(profile_value MARKET_MAX_OI_SHORT_USD)"
+LUMIX_MARKET_SYNTHETIC="$(profile_value MARKET_SYNTHETIC)"
+LUMIX_ENABLE_OPTIONS="$(profile_value ENABLE_OPTIONS)"
+LUMIX_OPTIONS_EXPIRY="$(profile_value OPTIONS_EXPIRY)"
+LUMIX_SEED_LIQUIDITY="$(profile_value SEED_LIQUIDITY)"
+LUMIX_LP_SOURCE="$(profile_value LP_SOURCE)"
+LUMIX_LP_ADDRESS="$(profile_value LP_ADDRESS)"
+LUMIX_INITIAL_LONG_AMOUNT="$(profile_value INITIAL_LONG_AMOUNT)"
+LUMIX_INITIAL_SHORT_AMOUNT="$(profile_value INITIAL_SHORT_AMOUNT)"
+LUMIX_INITIAL_MIN_SHARES="$(profile_value INITIAL_MIN_SHARES)"
+LUMIX_RUN_TESTS="$(profile_value RUN_TESTS)"
+LUMIX_AUTO_CREATE_TEST_IDENTITIES="$(profile_value AUTO_CREATE_TEST_IDENTITIES)"
+LUMIX_ACTIVATE_PROTOCOL="$(profile_value ACTIVATE_PROTOCOL)"
+LUMIX_REQUIRE_LEDGER_CHECKPOINT="$(profile_value REQUIRE_LEDGER_CHECKPOINT)"
+LUMIX_ALIAS_PREFIX="$(profile_value ALIAS_PREFIX)"
+LUMIX_ALLOW_UNSAFE_MAINNET="$(profile_value ALLOW_UNSAFE_MAINNET)"
+LUMIX_MAINNET_CONFIRMATION="$(profile_value DEPLOY_CONFIRMATION)"
+LUMIX_OUTPUT_DIR="$DEPLOY_OUTPUT_DIR"
+LUMIX_STATE_FILE="$DEPLOY_STATE_FILE"
+LUMIX_MANIFEST_FILE="$DEPLOY_MANIFEST_FILE"
+
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "$REPO_ROOT"
+
+if [[ "$LUMIX_OUTPUT_DIR" = /* ]]; then
+  OUTPUT_DIR="$LUMIX_OUTPUT_DIR"
+else
+  OUTPUT_DIR="$REPO_ROOT/$LUMIX_OUTPUT_DIR"
+fi
+mkdir -p "$OUTPUT_DIR"
+
+if [[ -z "$LUMIX_STATE_FILE" ]]; then
+  STATE_FILE="$OUTPUT_DIR/${LUMIX_NETWORK}-${LUMIX_MARKET_SLUG}.state.env"
+elif [[ "$LUMIX_STATE_FILE" = /* ]]; then
+  STATE_FILE="$LUMIX_STATE_FILE"
+else
+  STATE_FILE="$REPO_ROOT/$LUMIX_STATE_FILE"
+fi
+
+if [[ -z "$LUMIX_MANIFEST_FILE" ]]; then
+  MANIFEST_FILE="$OUTPUT_DIR/${LUMIX_NETWORK}-${LUMIX_MARKET_SLUG}.manifest.json"
+elif [[ "$LUMIX_MANIFEST_FILE" = /* ]]; then
+  MANIFEST_FILE="$LUMIX_MANIFEST_FILE"
+else
+  MANIFEST_FILE="$REPO_ROOT/$LUMIX_MANIFEST_FILE"
+fi
+
+mkdir -p "$(dirname "$STATE_FILE")" "$(dirname "$MANIFEST_FILE")"
+
+log() { printf '\n[%s] %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
+die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+trap 'rc=$?; printf "\nERROR: deployment stopped at line %s (exit %s). Fix the cause and rerun; the state file makes the process resumable.\n" "$LINENO" "$rc" >&2; exit "$rc"' ERR
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
+}
+
+validate_bool() {
+  case "$2" in
+    true|false) ;;
+    *) die "$1 must be true or false (got: $2)" ;;
+  esac
+}
+
+require_uint() {
+  [[ "$2" =~ ^[0-9]+$ ]] || die "$1 must be an unsigned integer (got: $2)"
+}
+
+require_positive_uint() {
+  require_uint "$1" "$2"
+  (( "$2" > 0 )) || die "$1 must be greater than zero"
+}
+
+require_bps() {
+  require_uint "$1" "$2"
+  (( "$2" <= 10000 )) || die "$1 must be between 0 and 10000"
+}
+
+validate_address() {
+  [[ "$2" =~ ^[GC][A-Z2-7]{55}$ ]] || die "$1 must be a valid G... account or C... contract address"
+}
+
+validate_contract_id() {
+  [[ "$2" =~ ^C[A-Z2-7]{55}$ ]] || die "$1 is not a valid contract ID: $2"
+}
+
+sha256_stream() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  else
+    shasum -a 256 | awk '{print $1}'
+  fi
+}
+
+for cmd in stellar cargo jq curl awk; do
+  require_command "$cmd"
+done
+if ! command -v sha256sum >/dev/null 2>&1; then
+  require_command shasum
+fi
+
+for pair in \
+  "LUMIX_CONFIGURE_NETWORK_ALIAS:$LUMIX_CONFIGURE_NETWORK_ALIAS" \
+  "LUMIX_DEPLOY_ASSET_CONTRACTS:$LUMIX_DEPLOY_ASSET_CONTRACTS" \
+  "LUMIX_ENABLE_OPTIONS:$LUMIX_ENABLE_OPTIONS" \
+  "LUMIX_SEED_LIQUIDITY:$LUMIX_SEED_LIQUIDITY" \
+  "LUMIX_RUN_TESTS:$LUMIX_RUN_TESTS" \
+  "LUMIX_AUTO_CREATE_TEST_IDENTITIES:$LUMIX_AUTO_CREATE_TEST_IDENTITIES" \
+  "LUMIX_ACTIVATE_PROTOCOL:$LUMIX_ACTIVATE_PROTOCOL" \
+  "LUMIX_REQUIRE_LEDGER_CHECKPOINT:$LUMIX_REQUIRE_LEDGER_CHECKPOINT" \
+  "LUMIX_MARKET_SYNTHETIC:$LUMIX_MARKET_SYNTHETIC" \
+  "LUMIX_ALLOW_UNSAFE_MAINNET:$LUMIX_ALLOW_UNSAFE_MAINNET"; do
+  validate_bool "${pair%%:*}" "${pair#*:}"
+done
+
+[[ "$LUMIX_MARKET_SLUG" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "LUMIX_MARKET_SLUG must contain lowercase letters, digits, and hyphens"
+[[ "$LUMIX_ALIAS_PREFIX" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || die "LUMIX_ALIAS_PREFIX contains unsupported characters"
+[[ -n "$LUMIX_NETWORK" ]] || die "${PROFILE_PREFIX}_NETWORK cannot be blank"
+[[ -n "$LUMIX_RPC_URL" ]] || die "${PROFILE_PREFIX}_RPC_URL cannot be blank"
+[[ -n "$LUMIX_NETWORK_PASSPHRASE" ]] || die "${PROFILE_PREFIX}_NETWORK_PASSPHRASE cannot be blank"
+[[ -n "$LUMIX_SHORT_ASSET" ]] || die "Set ${PROFILE_PREFIX}_SHORT_ASSET in the selected profile"
+[[ -n "$LUMIX_LONG_PRICE" ]] || die "Set ${PROFILE_PREFIX}_LONG_PRICE in the selected profile using 14-decimal USD precision"
+[[ -n "$LUMIX_INDEX_ASSET" ]] || LUMIX_INDEX_ASSET="$LUMIX_LONG_ASSET"
+
+require_positive_uint LUMIX_LONG_PRICE "$LUMIX_LONG_PRICE"
+require_positive_uint LUMIX_SHORT_PRICE "$LUMIX_SHORT_PRICE"
+require_positive_uint LUMIX_ORACLE_MAX_AGE "$LUMIX_ORACLE_MAX_AGE"
+require_bps LUMIX_ORACLE_MAX_DEVIATION_BPS "$LUMIX_ORACLE_MAX_DEVIATION_BPS"
+require_bps LUMIX_ORACLE_SPREAD_BPS "$LUMIX_ORACLE_SPREAD_BPS"
+require_bps LUMIX_POOL_RESERVE_FACTOR_BPS "$LUMIX_POOL_RESERVE_FACTOR_BPS"
+require_bps LUMIX_POOL_PROTOCOL_FEE_BPS "$LUMIX_POOL_PROTOCOL_FEE_BPS"
+require_uint LUMIX_POOL_MAX_USD "$LUMIX_POOL_MAX_USD"
+require_positive_uint LUMIX_MARKET_MAX_LEVERAGE "$LUMIX_MARKET_MAX_LEVERAGE"
+require_bps LUMIX_MARKET_MMR_BPS "$LUMIX_MARKET_MMR_BPS"
+require_uint LUMIX_MARKET_MAX_OI_LONG_USD "$LUMIX_MARKET_MAX_OI_LONG_USD"
+require_uint LUMIX_MARKET_MAX_OI_SHORT_USD "$LUMIX_MARKET_MAX_OI_SHORT_USD"
+
+if [[ "$DEPLOY_TARGET" == "testnet" ]]; then
+  EXPECTED_NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+else
+  EXPECTED_NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"
+fi
+[[ "$LUMIX_NETWORK_PASSPHRASE" == "$EXPECTED_NETWORK_PASSPHRASE" ]] || \
+  die "$PROFILE_PREFIX profile has the wrong network passphrase for DEPLOY_TARGET=$DEPLOY_TARGET"
+
+if [[ "$DEPLOY_TARGET" == "mainnet" ]]; then
+  [[ "$LUMIX_ALLOW_UNSAFE_MAINNET" == "true" ]] || die "Mainnet deployment is blocked. Resolve the documented contract risks, then set MAINNET_ALLOW_UNSAFE_MAINNET=true."
+  [[ "$LUMIX_MAINNET_CONFIRMATION" == "DEPLOY_LUMIX_MAINNET" ]] || die "Set MAINNET_DEPLOY_CONFIRMATION=DEPLOY_LUMIX_MAINNET to confirm the unsafe mainnet override."
+fi
+
+NETWORK_ARGS=(--network "$LUMIX_NETWORK")
+
+if [[ "$LUMIX_CONFIGURE_NETWORK_ALIAS" == "true" ]]; then
+  log "Configuring Stellar CLI network '$LUMIX_NETWORK' from the $PROFILE_PREFIX profile"
+  NETWORK_CONFIG_ARGS=(
+    --rpc-url "$LUMIX_RPC_URL"
+    --network-passphrase "$LUMIX_NETWORK_PASSPHRASE"
+  )
+  if [[ -n "$LUMIX_RPC_HEADER" ]]; then
+    NETWORK_CONFIG_ARGS+=(--rpc-header "$LUMIX_RPC_HEADER")
+  fi
+  stellar network add --quiet "${NETWORK_CONFIG_ARGS[@]}" "$LUMIX_NETWORK"
+fi
+
+NETWORK_INFO="$(stellar network info --quiet "${NETWORK_ARGS[@]}" --output json)"
+NETWORK_ACTUAL_PASSPHRASE="$(printf '%s' "$NETWORK_INFO" | jq -er '.passphrase')"
+[[ "$NETWORK_ACTUAL_PASSPHRASE" == "$LUMIX_NETWORK_PASSPHRASE" ]] || \
+  die "Configured network '$LUMIX_NETWORK' returned the wrong passphrase"
+log "Selected $DEPLOY_TARGET profile using Stellar network '$LUMIX_NETWORK'"
+
+identity_public_key() {
+  stellar keys public-key "$1" 2>/dev/null
+}
+
+ensure_identity() {
+  local source_name="$1"
+  local role="$2"
+  if identity_public_key "$source_name" >/dev/null 2>&1; then
+    return
+  fi
+  if [[ "$LUMIX_AUTO_CREATE_TEST_IDENTITIES" == "true" && "$DEPLOY_TARGET" == "testnet" ]]; then
+    log "Creating and funding $role identity: $source_name"
+    stellar keys generate "$source_name" "${NETWORK_ARGS[@]}" --fund --quiet >/dev/null
+  else
+    die "Missing signing identity '$source_name' for $role. Create/import it with Stellar CLI or change the source variable."
+  fi
+}
+
+ensure_identity "$LUMIX_DEPLOYER_SOURCE" "deployer"
+ensure_identity "$LUMIX_ADMIN_SOURCE" "admin"
+ensure_identity "$LUMIX_KEEPER_SOURCE" "keeper"
+if [[ -n "$LUMIX_FEEDER_SOURCE" && "$LUMIX_FEEDER_SOURCE" != "$LUMIX_KEEPER_SOURCE" ]]; then
+  ensure_identity "$LUMIX_FEEDER_SOURCE" "oracle price feeder"
+fi
+if [[ "$LUMIX_SEED_LIQUIDITY" == "true" ]]; then
+  ensure_identity "$LUMIX_LP_SOURCE" "initial liquidity provider"
+fi
+
+DERIVED_ADMIN_ADDRESS="$(identity_public_key "$LUMIX_ADMIN_SOURCE")"
+DERIVED_KEEPER_ADDRESS="$(identity_public_key "$LUMIX_KEEPER_SOURCE")"
+[[ -n "$LUMIX_ADMIN_ADDRESS" ]] || LUMIX_ADMIN_ADDRESS="$DERIVED_ADMIN_ADDRESS"
+[[ -n "$LUMIX_KEEPER_ADDRESS" ]] || LUMIX_KEEPER_ADDRESS="$DERIVED_KEEPER_ADDRESS"
+[[ -n "$LUMIX_TREASURY_ADDRESS" ]] || LUMIX_TREASURY_ADDRESS="$LUMIX_ADMIN_ADDRESS"
+
+[[ "$LUMIX_ADMIN_ADDRESS" == "$DERIVED_ADMIN_ADDRESS" ]] || die "LUMIX_ADMIN_ADDRESS must match the public key of LUMIX_ADMIN_SOURCE for automatic initialization"
+[[ "$LUMIX_KEEPER_ADDRESS" == "$DERIVED_KEEPER_ADDRESS" ]] || die "LUMIX_KEEPER_ADDRESS must match the public key of LUMIX_KEEPER_SOURCE"
+validate_address LUMIX_ADMIN_ADDRESS "$LUMIX_ADMIN_ADDRESS"
+validate_address LUMIX_KEEPER_ADDRESS "$LUMIX_KEEPER_ADDRESS"
+validate_address LUMIX_TREASURY_ADDRESS "$LUMIX_TREASURY_ADDRESS"
+if [[ -z "$LUMIX_FEEDER_SOURCE" ]]; then
+  [[ -z "$LUMIX_FEEDER_ADDRESS" ]] || die "Set FEEDER_SOURCE when FEEDER_ADDRESS is set"
+  LUMIX_FEEDER_SOURCE="$LUMIX_KEEPER_SOURCE"
+  LUMIX_FEEDER_ADDRESS="$LUMIX_KEEPER_ADDRESS"
+else
+  DERIVED_FEEDER_ADDRESS="$(identity_public_key "$LUMIX_FEEDER_SOURCE")"
+  [[ -n "$LUMIX_FEEDER_ADDRESS" ]] || LUMIX_FEEDER_ADDRESS="$DERIVED_FEEDER_ADDRESS"
+  [[ "$LUMIX_FEEDER_ADDRESS" == "$DERIVED_FEEDER_ADDRESS" ]] || die "LUMIX_FEEDER_ADDRESS must match the public key of LUMIX_FEEDER_SOURCE"
+  validate_address LUMIX_FEEDER_ADDRESS "$LUMIX_FEEDER_ADDRESS"
+fi
+
+if [[ "$LUMIX_ENABLE_OPTIONS" == "true" ]]; then
+  require_positive_uint LUMIX_OPTIONS_EXPIRY "$LUMIX_OPTIONS_EXPIRY"
+  NOW_EPOCH="$(date +%s)"
+  (( LUMIX_OPTIONS_EXPIRY > NOW_EPOCH )) || die "LUMIX_OPTIONS_EXPIRY must be in the future"
+  (( LUMIX_OPTIONS_EXPIRY - NOW_EPOCH <= 15552000 )) || die "LUMIX_OPTIONS_EXPIRY must be no more than 180 days away"
+fi
+
+if [[ "$LUMIX_SEED_LIQUIDITY" == "true" ]]; then
+  require_uint LUMIX_INITIAL_LONG_AMOUNT "$LUMIX_INITIAL_LONG_AMOUNT"
+  require_uint LUMIX_INITIAL_SHORT_AMOUNT "$LUMIX_INITIAL_SHORT_AMOUNT"
+  require_uint LUMIX_INITIAL_MIN_SHARES "$LUMIX_INITIAL_MIN_SHARES"
+  (( LUMIX_INITIAL_LONG_AMOUNT > 0 || LUMIX_INITIAL_SHORT_AMOUNT > 0 )) || die "Initial liquidity needs a positive long or short amount"
+  DERIVED_LP_ADDRESS="$(identity_public_key "$LUMIX_LP_SOURCE")"
+  [[ -n "$LUMIX_LP_ADDRESS" ]] || LUMIX_LP_ADDRESS="$DERIVED_LP_ADDRESS"
+  [[ "$LUMIX_LP_ADDRESS" == "$DERIVED_LP_ADDRESS" ]] || die "LUMIX_LP_ADDRESS must match LUMIX_LP_SOURCE"
+  validate_address LUMIX_LP_ADDRESS "$LUMIX_LP_ADDRESS"
+fi
+
+CURRENT_CONFIG_FINGERPRINT="$(printf '%s\n' \
+  "$DEPLOY_TARGET" "$LUMIX_NETWORK" "$LUMIX_NETWORK_PASSPHRASE" \
+  "$LUMIX_DEPLOYER_SOURCE" "$LUMIX_ADMIN_SOURCE" "$LUMIX_KEEPER_SOURCE" \
+  "$LUMIX_ALIAS_PREFIX" "$LUMIX_ADMIN_ADDRESS" "$LUMIX_KEEPER_ADDRESS" "$LUMIX_TREASURY_ADDRESS" \
+  "$LUMIX_LONG_ASSET" "$LUMIX_SHORT_ASSET" "$LUMIX_INDEX_ASSET" \
+  "$LUMIX_LONG_PRICE" "$LUMIX_SHORT_PRICE" "$LUMIX_INDEX_PRICE" \
+  "$LUMIX_ORACLE_MAX_AGE" "$LUMIX_ORACLE_MAX_DEVIATION_BPS" "$LUMIX_ORACLE_SPREAD_BPS" \
+  "$LUMIX_SHARE_NAME" "$LUMIX_SHARE_SYMBOL" \
+  "$LUMIX_POOL_RESERVE_FACTOR_BPS" "$LUMIX_POOL_PROTOCOL_FEE_BPS" \
+  "$LUMIX_POOL_MAX_USD" "$LUMIX_MARKET_MAX_LEVERAGE" "$LUMIX_MARKET_MMR_BPS" \
+  "$LUMIX_MARKET_MAX_OI_LONG_USD" "$LUMIX_MARKET_MAX_OI_SHORT_USD" "$LUMIX_MARKET_SYNTHETIC" \
+  "$LUMIX_ENABLE_OPTIONS" "$LUMIX_OPTIONS_EXPIRY" "$LUMIX_SEED_LIQUIDITY" \
+  "${LUMIX_LP_ADDRESS:-}" "$LUMIX_INITIAL_LONG_AMOUNT" "$LUMIX_INITIAL_SHORT_AMOUNT" \
+  "$LUMIX_INITIAL_MIN_SHARES" | sha256_stream)"
+
+# Resumable deployment state. This file contains IDs and step markers, never secret keys.
+CONFIG_FINGERPRINT=""
+WASM_SET_HASH=""
+DEPLOYMENT_START_LEDGER=""
+DEPLOYMENT_END_LEDGER=""
+LONG_TOKEN_ID=""
+SHORT_TOKEN_ID=""
+INDEX_TOKEN_ID=""
+ORACLE_ID=""
+FACTORY_ID=""
+OPTIONS_ID=""
+EXCHANGE_ID=""
+POOL_ID=""
+MARKET_ID=""
+POOL_PAUSED=0
+MARKET_PAUSED=0
+OPTIONS_PAUSED=0
+POOL_MARKET_WIRED=0
+MARKET_EXCHANGE_WIRED=0
+EXCHANGE_FACTORY_WIRED=0
+FACTORY_REGISTERED=0
+FACTORY_DISABLED=0
+KEEPERS_SET=0
+RISK_CONFIGURED=0
+PRICES_SEEDED=0
+OPTIONS_CONFIGURED=0
+LIQUIDITY_ATTEMPTED=0
+LP_BALANCE_BEFORE=""
+LIQUIDITY_SEEDED=0
+PROTOCOL_ACTIVATED=0
+
+STATE_PREEXISTED=false
+if [[ -f "$STATE_FILE" ]]; then
+  STATE_PREEXISTED=true
+  # shellcheck disable=SC1090
+  source "$STATE_FILE"
+fi
+
+if [[ -n "$CONFIG_FINGERPRINT" && "$CONFIG_FINGERPRINT" != "$CURRENT_CONFIG_FINGERPRINT" ]]; then
+  die "Configuration changed since this deployment began. Keep the old config to resume, or choose a new LUMIX_STATE_FILE/LUMIX_MARKET_SLUG for a new deployment."
+fi
+CONFIG_FINGERPRINT="$CURRENT_CONFIG_FINGERPRINT"
+
+STATE_KEYS=(
+  CONFIG_FINGERPRINT WASM_SET_HASH DEPLOYMENT_START_LEDGER DEPLOYMENT_END_LEDGER
+  LONG_TOKEN_ID SHORT_TOKEN_ID INDEX_TOKEN_ID
+  ORACLE_ID FACTORY_ID OPTIONS_ID EXCHANGE_ID POOL_ID MARKET_ID
+  POOL_PAUSED MARKET_PAUSED OPTIONS_PAUSED POOL_MARKET_WIRED MARKET_EXCHANGE_WIRED EXCHANGE_FACTORY_WIRED
+  FACTORY_REGISTERED FACTORY_DISABLED KEEPERS_SET
+  RISK_CONFIGURED PRICES_SEEDED OPTIONS_CONFIGURED LIQUIDITY_ATTEMPTED LP_BALANCE_BEFORE
+  LIQUIDITY_SEEDED PROTOCOL_ACTIVATED
+)
+
+save_state() {
+  local tmp_file="${STATE_FILE}.tmp.$$"
+  {
+    printf '# Generated by scripts/deploy.sh. Contains no secret keys.\n'
+    local key
+    for key in "${STATE_KEYS[@]}"; do
+      printf '%s=' "$key"
+      printf '%q' "${!key}"
+      printf '\n'
+    done
+  } > "$tmp_file"
+  chmod 600 "$tmp_file"
+  mv "$tmp_file" "$STATE_FILE"
+}
+
+resolve_rpc_url() {
+  if [[ -n "$LUMIX_RPC_URL" ]]; then
+    printf '%s\n' "$LUMIX_RPC_URL"
+    return
+  fi
+  stellar network ls --long | awk -v wanted="$LUMIX_NETWORK" '
+    $0 == "Name: " wanted { found=1; next }
+    found && /^RPC url: / { sub(/^RPC url: /, ""); print; exit }
+  '
+}
+
+get_latest_ledger() {
+  local rpc_url response
+  rpc_url="$(resolve_rpc_url)"
+  [[ "$rpc_url" =~ ^https?:// ]] || return 1
+  if [[ -n "$LUMIX_RPC_HEADER" ]]; then
+    response="$(curl -fsS -H 'Content-Type: application/json' -H "$LUMIX_RPC_HEADER" \
+      --data '{"jsonrpc":"2.0","id":1,"method":"getLatestLedger","params":{}}' "$rpc_url")"
+  else
+    response="$(curl -fsS -H 'Content-Type: application/json' \
+      --data '{"jsonrpc":"2.0","id":1,"method":"getLatestLedger","params":{}}' "$rpc_url")"
+  fi
+  printf '%s' "$response" | jq -er '.result.sequence'
+}
+
+if [[ -z "$DEPLOYMENT_START_LEDGER" ]]; then
+  if DEPLOYMENT_START_LEDGER="$(get_latest_ledger)"; then
+    log "Listener checkpoint captured at ledger $DEPLOYMENT_START_LEDGER"
+  elif [[ "$LUMIX_REQUIRE_LEDGER_CHECKPOINT" == "true" ]]; then
+    die "Could not capture getLatestLedger. Set a working LUMIX_RPC_URL/header; this checkpoint prevents listener gaps."
+  else
+    DEPLOYMENT_START_LEDGER=""
+    log "WARNING: continuing without a deployment ledger checkpoint"
+  fi
+  save_state
+fi
+
+log "Running pre-deployment checks"
+STELLAR_VERSION="$(stellar --version | awk '{print $2}')"
+if [[ "${STELLAR_VERSION%%.*}" != "27" ]]; then
+  log "WARNING: this repository uses Soroban SDK 27.x; installed Stellar CLI is $STELLAR_VERSION"
+fi
+if [[ "$LUMIX_RUN_TESTS" == "true" ]]; then
+  cargo test --workspace
+fi
+stellar contract build --locked
+
+WASM_DIR="$REPO_ROOT/target/wasm32v1-none/release"
+ORACLE_WASM="$WASM_DIR/lumix_oracle.wasm"
+FACTORY_WASM="$WASM_DIR/lumix_factory.wasm"
+OPTIONS_WASM="$WASM_DIR/lumix_options.wasm"
+EXCHANGE_WASM="$WASM_DIR/lumix_exchange.wasm"
+POOL_WASM="$WASM_DIR/lumix_pool.wasm"
+MARKET_WASM="$WASM_DIR/lumix_market.wasm"
+
+for wasm in "$ORACLE_WASM" "$FACTORY_WASM" \
+  "$OPTIONS_WASM" "$EXCHANGE_WASM" "$POOL_WASM" "$MARKET_WASM"; do
+  [[ -s "$wasm" ]] || die "Missing compiled WASM: $wasm"
+done
+
+CURRENT_WASM_SET_HASH="$(for wasm in "$ORACLE_WASM" "$FACTORY_WASM" \
+  "$OPTIONS_WASM" "$EXCHANGE_WASM" "$POOL_WASM" "$MARKET_WASM"; do
+  sha256_stream < "$wasm"
+done | sha256_stream)"
+if [[ -n "$WASM_SET_HASH" && "$WASM_SET_HASH" != "$CURRENT_WASM_SET_HASH" ]]; then
+  die "Compiled contract WASM changed during a resumable deployment. Use the original code, or choose a new state file/market slug to deploy a consistent contract set."
+fi
+WASM_SET_HASH="$CURRENT_WASM_SET_HASH"
+save_state
+
+asset_contract_id() {
+  stellar contract id asset --quiet "${NETWORK_ARGS[@]}" --asset "$1" | tr -d '\r\n'
+}
+
+EXPECTED_LONG_TOKEN_ID="$(asset_contract_id "$LUMIX_LONG_ASSET")"
+EXPECTED_SHORT_TOKEN_ID="$(asset_contract_id "$LUMIX_SHORT_ASSET")"
+EXPECTED_INDEX_TOKEN_ID="$(asset_contract_id "$LUMIX_INDEX_ASSET")"
+validate_contract_id LONG_TOKEN_ID "$EXPECTED_LONG_TOKEN_ID"
+validate_contract_id SHORT_TOKEN_ID "$EXPECTED_SHORT_TOKEN_ID"
+validate_contract_id INDEX_TOKEN_ID "$EXPECTED_INDEX_TOKEN_ID"
+[[ "$EXPECTED_LONG_TOKEN_ID" != "$EXPECTED_SHORT_TOKEN_ID" ]] || die "Long and short assets must be different"
+
+for comparison in \
+  "LONG_TOKEN_ID:$LONG_TOKEN_ID:$EXPECTED_LONG_TOKEN_ID" \
+  "SHORT_TOKEN_ID:$SHORT_TOKEN_ID:$EXPECTED_SHORT_TOKEN_ID" \
+  "INDEX_TOKEN_ID:$INDEX_TOKEN_ID:$EXPECTED_INDEX_TOKEN_ID"; do
+  comparison_name="${comparison%%:*}"
+  comparison_rest="${comparison#*:}"
+  saved_value="${comparison_rest%%:*}"
+  expected_value="${comparison_rest#*:}"
+  [[ -z "$saved_value" || "$saved_value" == "$expected_value" ]] || die "$comparison_name in the state file does not match the configured asset"
+done
+LONG_TOKEN_ID="$EXPECTED_LONG_TOKEN_ID"
+SHORT_TOKEN_ID="$EXPECTED_SHORT_TOKEN_ID"
+INDEX_TOKEN_ID="$EXPECTED_INDEX_TOKEN_ID"
+
+if [[ "$INDEX_TOKEN_ID" == "$LONG_TOKEN_ID" ]]; then
+  EFFECTIVE_INDEX_PRICE="$LUMIX_LONG_PRICE"
+elif [[ "$INDEX_TOKEN_ID" == "$SHORT_TOKEN_ID" ]]; then
+  EFFECTIVE_INDEX_PRICE="$LUMIX_SHORT_PRICE"
+else
+  [[ -n "$LUMIX_INDEX_PRICE" ]] || die "Set ${PROFILE_PREFIX}_INDEX_PRICE because the selected index asset is distinct from the long and short assets"
+  require_positive_uint LUMIX_INDEX_PRICE "$LUMIX_INDEX_PRICE"
+  EFFECTIVE_INDEX_PRICE="$LUMIX_INDEX_PRICE"
+fi
+if [[ "$LUMIX_ENABLE_OPTIONS" == "true" && "$INDEX_TOKEN_ID" == "$SHORT_TOKEN_ID" ]]; then
+  die "Options base and quote must differ; LUMIX_INDEX_ASSET cannot equal LUMIX_SHORT_ASSET when options are enabled"
+fi
+save_state
+
+contract_exists() {
+  stellar contract info interface --quiet "${NETWORK_ARGS[@]}" --contract-id "$1" --output xdr-base64 >/dev/null 2>&1
+}
+
+ensure_asset_contract() {
+  local label="$1" asset="$2" contract_id="$3" alias_name="$4" deployed_id
+  if contract_exists "$contract_id"; then
+    log "$label asset contract exists: $contract_id"
+    return
+  fi
+  [[ "$LUMIX_DEPLOY_ASSET_CONTRACTS" == "true" ]] || die "$label asset contract is not deployed. Set ${PROFILE_PREFIX}_DEPLOY_ASSET_CONTRACTS=true or deploy it first."
+  log "Deploying $label Stellar Asset Contract"
+  deployed_id="$(stellar contract asset deploy "${NETWORK_ARGS[@]}" \
+    --source-account "$LUMIX_DEPLOYER_SOURCE" --asset "$asset" --alias "$alias_name" | tr -d '\r\n')"
+  [[ "$deployed_id" == "$contract_id" ]] || die "$label SAC returned unexpected ID $deployed_id (expected $contract_id)"
+}
+
+ensure_asset_contract "long" "$LUMIX_LONG_ASSET" "$LONG_TOKEN_ID" "${LUMIX_ALIAS_PREFIX}-long-sac"
+ensure_asset_contract "short" "$LUMIX_SHORT_ASSET" "$SHORT_TOKEN_ID" "${LUMIX_ALIAS_PREFIX}-short-sac"
+if [[ "$INDEX_TOKEN_ID" != "$LONG_TOKEN_ID" && "$INDEX_TOKEN_ID" != "$SHORT_TOKEN_ID" ]]; then
+  ensure_asset_contract "index" "$LUMIX_INDEX_ASSET" "$INDEX_TOKEN_ID" "${LUMIX_ALIAS_PREFIX}-index-sac"
+fi
+
+deploy_contract() {
+  local variable_name="$1" alias_name="$2" wasm_path="$3"
+  shift 3
+  local current_id="${!variable_name}" recovered_id="" deployed_id=""
+
+  if [[ -n "$current_id" ]]; then
+    validate_contract_id "$variable_name" "$current_id"
+    contract_exists "$current_id" || die "$variable_name from state does not exist on $LUMIX_NETWORK: $current_id"
+    log "Reusing $variable_name: $current_id"
+    return
+  fi
+
+  # Alias recovery closes the tiny crash window between a successful deployment
+  # and writing its ID to the state file. It is only used for a pre-existing state.
+  if [[ "$STATE_PREEXISTED" == "true" ]]; then
+    recovered_id="$(stellar contract alias show --quiet "${NETWORK_ARGS[@]}" "$alias_name" 2>/dev/null || true)"
+    recovered_id="$(printf '%s' "$recovered_id" | tr -d '\r\n')"
+    if [[ "$recovered_id" =~ ^C[A-Z2-7]{55}$ ]] && contract_exists "$recovered_id"; then
+      printf -v "$variable_name" '%s' "$recovered_id"
+      save_state
+      log "Recovered $variable_name from alias: $recovered_id"
+      return
+    fi
+  fi
+
+  log "Deploying $variable_name"
+  deployed_id="$(stellar contract deploy "${NETWORK_ARGS[@]}" \
+    --source-account "$LUMIX_DEPLOYER_SOURCE" --wasm "$wasm_path" --alias "$alias_name" -- "$@" | tr -d '\r\n')"
+  validate_contract_id "$variable_name" "$deployed_id"
+  printf -v "$variable_name" '%s' "$deployed_id"
+  save_state
+  log "$variable_name deployed: $deployed_id"
+}
+
+invoke_send() {
+  local source_name="$1" contract_id="$2" function_name="$3"
+  shift 3
+  stellar contract invoke "${NETWORK_ARGS[@]}" --id "$contract_id" \
+    --source-account "$source_name" --send yes --auto-sign -- "$function_name" "$@" >/dev/null
+}
+
+invoke_view() {
+  local contract_id="$1" function_name="$2"
+  shift 2
+  stellar contract invoke "${NETWORK_ARGS[@]}" --id "$contract_id" \
+    --source-account "$LUMIX_DEPLOYER_SOURCE" --send no -- "$function_name" "$@"
+}
+
+deploy_contract ORACLE_ID "${LUMIX_ALIAS_PREFIX}-oracle" "$ORACLE_WASM" \
+  --admin "$LUMIX_ADMIN_ADDRESS" --max_age "$LUMIX_ORACLE_MAX_AGE" \
+  --max_deviation_bps "$LUMIX_ORACLE_MAX_DEVIATION_BPS" --spread_bps "$LUMIX_ORACLE_SPREAD_BPS"
+deploy_contract FACTORY_ID "${LUMIX_ALIAS_PREFIX}-factory" "$FACTORY_WASM" --admin "$LUMIX_ADMIN_ADDRESS"
+deploy_contract OPTIONS_ID "${LUMIX_ALIAS_PREFIX}-options" "$OPTIONS_WASM" --admin "$LUMIX_ADMIN_ADDRESS" --oracle "$ORACLE_ID"
+deploy_contract EXCHANGE_ID "${LUMIX_ALIAS_PREFIX}-exchange" "$EXCHANGE_WASM" \
+  --admin "$LUMIX_ADMIN_ADDRESS" --oracle "$ORACLE_ID" --fee_token "$SHORT_TOKEN_ID"
+deploy_contract POOL_ID "${LUMIX_ALIAS_PREFIX}-pool" "$POOL_WASM" \
+  --admin "$LUMIX_ADMIN_ADDRESS" --long_token "$LONG_TOKEN_ID" --short_token "$SHORT_TOKEN_ID" \
+  --oracle "$ORACLE_ID" --fee_receiver "$LUMIX_TREASURY_ADDRESS" \
+  --share_name "$LUMIX_SHARE_NAME" --share_symbol "$LUMIX_SHARE_SYMBOL"
+
+if [[ "$POOL_PAUSED" != 1 ]]; then
+  log "Pausing pool while initialization is incomplete"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$POOL_ID" set_status --deposits false --swaps false --paused true
+  POOL_PAUSED=1
+  save_state
+fi
+
+deploy_contract MARKET_ID "${LUMIX_ALIAS_PREFIX}-market" "$MARKET_WASM" \
+  --admin "$LUMIX_ADMIN_ADDRESS" --pool "$POOL_ID" --oracle "$ORACLE_ID" \
+  --index_token "$INDEX_TOKEN_ID" --fee_receiver "$LUMIX_TREASURY_ADDRESS"
+
+if [[ "$MARKET_PAUSED" != 1 ]]; then
+  log "Pausing market while initialization is incomplete"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$MARKET_ID" set_status --paused true --trading_enabled false --on_hours true
+  MARKET_PAUSED=1
+  save_state
+fi
+
+if [[ "$OPTIONS_PAUSED" != 1 ]]; then
+  log "Pausing options while initialization is incomplete"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$OPTIONS_ID" set_paused --paused true
+  OPTIONS_PAUSED=1
+  save_state
+fi
+
+if [[ "$POOL_MARKET_WIRED" != 1 ]]; then
+  log "Connecting pool to market"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$POOL_ID" set_market --market "$MARKET_ID"
+  POOL_MARKET_WIRED=1
+  save_state
+fi
+
+if [[ "$MARKET_EXCHANGE_WIRED" != 1 ]]; then
+  log "Connecting market to exchange"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$MARKET_ID" set_exchange --exchange "$EXCHANGE_ID"
+  MARKET_EXCHANGE_WIRED=1
+  save_state
+fi
+
+if [[ "$FACTORY_REGISTERED" != 1 ]]; then
+  EXISTING_MARKETS="$(invoke_view "$FACTORY_ID" markets)"
+  EXISTING_COUNT="$(printf '%s' "$EXISTING_MARKETS" | jq -r --arg index "$INDEX_TOKEN_ID" '[.[] | select(.index_token == $index)] | length')"
+  if [[ "$EXISTING_COUNT" == 0 ]]; then
+    log "Registering market in factory"
+    invoke_send "$LUMIX_ADMIN_SOURCE" "$FACTORY_ID" register_market \
+      --market "$MARKET_ID" --pool "$POOL_ID" --oracle "$ORACLE_ID" --index_token "$INDEX_TOKEN_ID" \
+      --long_token "$LONG_TOKEN_ID" --short_token "$SHORT_TOKEN_ID"
+  elif [[ "$EXISTING_COUNT" == 1 ]]; then
+    printf '%s' "$EXISTING_MARKETS" | jq -e \
+      --arg index "$INDEX_TOKEN_ID" --arg market "$MARKET_ID" --arg pool "$POOL_ID" \
+      --arg oracle "$ORACLE_ID" --arg long "$LONG_TOKEN_ID" --arg short "$SHORT_TOKEN_ID" \
+      '.[] | select(.index_token == $index) | .market == $market and .pool == $pool and .oracle == $oracle and .long_token == $long and .short_token == $short' \
+      >/dev/null || die "Factory already has a different market registered for this index token"
+    log "Recovered existing factory registration"
+  else
+    die "Factory contains duplicate registrations for the index token"
+  fi
+  FACTORY_REGISTERED=1
+  save_state
+fi
+
+if [[ "$EXCHANGE_FACTORY_WIRED" != 1 ]]; then
+  log "Binding exchange to the canonical factory"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$EXCHANGE_ID" set_factory --factory "$FACTORY_ID"
+  EXCHANGE_FACTORY_WIRED=1
+  save_state
+fi
+
+if [[ "$FACTORY_DISABLED" != 1 ]]; then
+  log "Disabling factory route until initialization completes"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$FACTORY_ID" set_enabled --index_token "$INDEX_TOKEN_ID" --enabled false
+  FACTORY_DISABLED=1
+  save_state
+fi
+
+
+if [[ "$KEEPERS_SET" != 1 ]]; then
+  log "Authorizing keeper"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$ORACLE_ID" set_keeper --keeper "$LUMIX_KEEPER_ADDRESS" --allowed true
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$ORACLE_ID" set_feeder --feeder "$LUMIX_FEEDER_ADDRESS"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$MARKET_ID" set_keeper --keeper "$LUMIX_KEEPER_ADDRESS" --allowed true
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$EXCHANGE_ID" set_keeper --keeper "$LUMIX_KEEPER_ADDRESS" --allowed true
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$OPTIONS_ID" set_keeper --keeper "$LUMIX_KEEPER_ADDRESS" --allowed true
+  KEEPERS_SET=1
+  save_state
+fi
+
+
+if [[ "$RISK_CONFIGURED" != 1 ]]; then
+  log "Applying explicit pool and market risk parameters"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$POOL_ID" set_params \
+    --reserve_factor_bps "$LUMIX_POOL_RESERVE_FACTOR_BPS" \
+    --protocol_fee_bps "$LUMIX_POOL_PROTOCOL_FEE_BPS" \
+    --max_pool_usd "$LUMIX_POOL_MAX_USD" --fee_receiver "$LUMIX_TREASURY_ADDRESS"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$MARKET_ID" set_risk \
+    --max_leverage "$LUMIX_MARKET_MAX_LEVERAGE" --mmr_bps "$LUMIX_MARKET_MMR_BPS" \
+    --max_oi_long_usd "$LUMIX_MARKET_MAX_OI_LONG_USD" --max_oi_short_usd "$LUMIX_MARKET_MAX_OI_SHORT_USD" \
+    --synthetic "$LUMIX_MARKET_SYNTHETIC"
+  RISK_CONFIGURED=1
+  save_state
+fi
+
+if [[ "$PRICES_SEEDED" != 1 ]]; then
+  log "Seeding oracle prices"
+  invoke_send "$LUMIX_KEEPER_SOURCE" "$ORACLE_ID" set_mid \
+    --caller "$LUMIX_KEEPER_ADDRESS" --asset "$LONG_TOKEN_ID" --mid "$LUMIX_LONG_PRICE"
+  invoke_send "$LUMIX_KEEPER_SOURCE" "$ORACLE_ID" set_mid \
+    --caller "$LUMIX_KEEPER_ADDRESS" --asset "$SHORT_TOKEN_ID" --mid "$LUMIX_SHORT_PRICE"
+  if [[ "$INDEX_TOKEN_ID" != "$LONG_TOKEN_ID" && "$INDEX_TOKEN_ID" != "$SHORT_TOKEN_ID" ]]; then
+    invoke_send "$LUMIX_KEEPER_SOURCE" "$ORACLE_ID" set_mid \
+      --caller "$LUMIX_KEEPER_ADDRESS" --asset "$INDEX_TOKEN_ID" --mid "$LUMIX_INDEX_PRICE"
+  fi
+  PRICES_SEEDED=1
+  save_state
+fi
+
+if [[ "$OPTIONS_CONFIGURED" != 1 ]]; then
+  if [[ "$LUMIX_ENABLE_OPTIONS" == "true" ]]; then
+    log "Configuring options pair and expiry"
+    invoke_send "$LUMIX_ADMIN_SOURCE" "$OPTIONS_ID" set_pair \
+      --base "$INDEX_TOKEN_ID" --quote "$SHORT_TOKEN_ID" --enabled true
+    invoke_send "$LUMIX_ADMIN_SOURCE" "$OPTIONS_ID" set_expiry \
+      --base "$INDEX_TOKEN_ID" --quote "$SHORT_TOKEN_ID" --expiry "$LUMIX_OPTIONS_EXPIRY" --enabled true
+  fi
+  OPTIONS_CONFIGURED=1
+  save_state
+fi
+
+if [[ "$LUMIX_SEED_LIQUIDITY" == "true" && "$LIQUIDITY_SEEDED" != 1 ]]; then
+  if [[ "$LIQUIDITY_ATTEMPTED" != 1 ]]; then
+    LP_BALANCE_BEFORE="$(invoke_view "$POOL_ID" balance --id "$LUMIX_LP_ADDRESS" | tr -d '"\r\n')"
+    [[ "$LP_BALANCE_BEFORE" =~ ^[0-9]+$ ]] || die "Could not read initial LP share balance"
+    LIQUIDITY_ATTEMPTED=1
+    save_state
+  else
+    CURRENT_LP_BALANCE="$(invoke_view "$POOL_ID" balance --id "$LUMIX_LP_ADDRESS" | tr -d '"\r\n')"
+    [[ "$CURRENT_LP_BALANCE" =~ ^[0-9]+$ ]] || die "Could not read current LP share balance"
+    if (( CURRENT_LP_BALANCE > LP_BALANCE_BEFORE )); then
+      LIQUIDITY_SEEDED=1
+      save_state
+      log "Recovered successful initial liquidity deposit from on-chain LP balance"
+    fi
+  fi
+
+  if [[ "$LIQUIDITY_SEEDED" != 1 ]]; then
+    log "Temporarily enabling deposits and seeding initial liquidity"
+    invoke_send "$LUMIX_ADMIN_SOURCE" "$POOL_ID" set_status --deposits true --swaps false --paused false
+    invoke_send "$LUMIX_LP_SOURCE" "$POOL_ID" deposit \
+      --user "$LUMIX_LP_ADDRESS" --long_amount "$LUMIX_INITIAL_LONG_AMOUNT" \
+      --short_amount "$LUMIX_INITIAL_SHORT_AMOUNT" --min_shares "$LUMIX_INITIAL_MIN_SHARES"
+    LIQUIDITY_SEEDED=1
+    save_state
+  fi
+
+  if [[ "$LUMIX_ACTIVATE_PROTOCOL" != "true" ]]; then
+    invoke_send "$LUMIX_ADMIN_SOURCE" "$POOL_ID" set_status --deposits false --swaps false --paused true
+  fi
+fi
+
+if [[ "$LUMIX_ACTIVATE_PROTOCOL" == "true" && "$PROTOCOL_ACTIVATED" != 1 ]]; then
+  log "Activating pool, market, and factory route"
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$POOL_ID" set_status --deposits true --swaps true --paused false
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$MARKET_ID" set_status --paused false --trading_enabled true --on_hours true
+  if [[ "$LUMIX_ENABLE_OPTIONS" == "true" ]]; then
+    invoke_send "$LUMIX_ADMIN_SOURCE" "$OPTIONS_ID" set_paused --paused false
+  fi
+  invoke_send "$LUMIX_ADMIN_SOURCE" "$FACTORY_ID" set_enabled --index_token "$INDEX_TOKEN_ID" --enabled true
+  PROTOCOL_ACTIVATED=1
+  save_state
+fi
+
+log "Verifying deployed contract interfaces and readable configuration"
+for contract_id in "$ORACLE_ID" "$FACTORY_ID" "$OPTIONS_ID" \
+  "$EXCHANGE_ID" "$POOL_ID" "$MARKET_ID"; do
+  contract_exists "$contract_id" || die "Contract verification failed for $contract_id"
+done
+invoke_view "$ORACLE_ID" config >/dev/null
+invoke_view "$EXCHANGE_ID" config >/dev/null
+invoke_view "$POOL_ID" config >/dev/null
+invoke_view "$MARKET_ID" config >/dev/null
+invoke_view "$OPTIONS_ID" config >/dev/null
+invoke_view "$FACTORY_ID" markets >/dev/null
+
+if DEPLOYMENT_END_LEDGER="$(get_latest_ledger)"; then
+  save_state
+elif [[ "$LUMIX_REQUIRE_LEDGER_CHECKPOINT" == "true" ]]; then
+  die "Deployment succeeded, but the final ledger checkpoint could not be captured. Rerun after fixing RPC access."
+fi
+
+wasm_hash() {
+  stellar contract info hash --quiet --wasm "$1" | tr -d '\r\n'
+}
+
+ORACLE_HASH="$(wasm_hash "$ORACLE_WASM")"
+FACTORY_HASH="$(wasm_hash "$FACTORY_WASM")"
+OPTIONS_HASH="$(wasm_hash "$OPTIONS_WASM")"
+EXCHANGE_HASH="$(wasm_hash "$EXCHANGE_WASM")"
+POOL_HASH="$(wasm_hash "$POOL_WASM")"
+MARKET_HASH="$(wasm_hash "$MARKET_WASM")"
+DEPLOYED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+MANIFEST_TMP="${MANIFEST_FILE}.tmp.$$"
+jq -n \
+  --arg schema_version "2" --arg network "$LUMIX_NETWORK" --arg market_slug "$LUMIX_MARKET_SLUG" \
+  --arg deployed_at "$DEPLOYED_AT" --arg start_ledger "$DEPLOYMENT_START_LEDGER" --arg end_ledger "$DEPLOYMENT_END_LEDGER" \
+  --arg admin "$LUMIX_ADMIN_ADDRESS" --arg keeper "$LUMIX_KEEPER_ADDRESS" --arg feeder "$LUMIX_FEEDER_ADDRESS" --arg treasury "$LUMIX_TREASURY_ADDRESS" \
+  --arg long_asset "$LUMIX_LONG_ASSET" --arg short_asset "$LUMIX_SHORT_ASSET" --arg index_asset "$LUMIX_INDEX_ASSET" \
+  --arg long_token "$LONG_TOKEN_ID" --arg short_token "$SHORT_TOKEN_ID" --arg index_token "$INDEX_TOKEN_ID" \
+  --arg oracle "$ORACLE_ID" --arg factory "$FACTORY_ID" \
+  --arg options "$OPTIONS_ID" --arg exchange "$EXCHANGE_ID" --arg pool "$POOL_ID" --arg market "$MARKET_ID" \
+  --arg oracle_hash "$ORACLE_HASH" --arg factory_hash "$FACTORY_HASH" \
+  --arg options_hash "$OPTIONS_HASH" --arg exchange_hash "$EXCHANGE_HASH" \
+  --arg pool_hash "$POOL_HASH" --arg market_hash "$MARKET_HASH" \
+  --arg activated "$PROTOCOL_ACTIVATED" --arg options_enabled "$LUMIX_ENABLE_OPTIONS" \
+  --arg long_price "$LUMIX_LONG_PRICE" --arg short_price "$LUMIX_SHORT_PRICE" --arg index_price "$EFFECTIVE_INDEX_PRICE" \
+  '{
+    schema_version: $schema_version,
+    network: $network,
+    market_slug: $market_slug,
+    deployed_at: $deployed_at,
+    listener: {
+      cursor_model: "ledger",
+      start_after_ledger: (if $start_ledger == "" then null else ($start_ledger | tonumber) end),
+      deployment_end_ledger: (if $end_ledger == "" then null else ($end_ledger | tonumber) end)
+    },
+    roles: {admin: $admin, keeper: $keeper, feeder: $feeder, treasury: $treasury},
+    assets: {
+      long: {asset: $long_asset, contract_id: $long_token, initial_price_14dp: $long_price},
+      short: {asset: $short_asset, contract_id: $short_token, initial_price_14dp: $short_price},
+      index: {asset: $index_asset, contract_id: $index_token, initial_price_14dp: $index_price}
+    },
+    contracts: {
+      oracle: {id: $oracle, wasm_hash: $oracle_hash},
+      factory: {id: $factory, wasm_hash: $factory_hash},
+      options: {id: $options, wasm_hash: $options_hash},
+      exchange: {id: $exchange, wasm_hash: $exchange_hash},
+      pool: {id: $pool, wasm_hash: $pool_hash},
+      market: {id: $market, wasm_hash: $market_hash}
+    },
+    protocol_contract_ids: [$oracle, $factory, $options, $exchange, $pool, $market],
+    listener_contract_ids: ([$oracle, $factory, $options, $exchange, $pool, $market, $long_token, $short_token, $index_token] | unique),
+    activated: ($activated == "1"),
+    options_enabled: ($options_enabled == "true")
+  }' > "$MANIFEST_TMP"
+mv "$MANIFEST_TMP" "$MANIFEST_FILE"
+
+log "Lumix deployment complete"
+printf 'State:    %s\n' "$STATE_FILE"
+printf 'Manifest: %s\n' "$MANIFEST_FILE"
+printf 'Market:   %s\n' "$MARKET_ID"
+printf 'Pool:     %s\n' "$POOL_ID"
+if [[ "$PROTOCOL_ACTIVATED" == 1 ]]; then
+  printf '\nProtocol is active.\n'
+else
+  printf '\nProtocol remains safely paused/disabled. Set %s_ACTIVATE_PROTOCOL=true and rerun when ready.\n' "$PROFILE_PREFIX"
+fi
