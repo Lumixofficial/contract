@@ -341,3 +341,5 @@ impl Aggregator {
     }
 }
 
+#[cfg(test)]
+mod test;
