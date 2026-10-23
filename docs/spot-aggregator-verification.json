@@ -1,0 +1,334 @@
+{
+  "checkedAt": "2026-10-23T09:42:51.741441+00:00",
+  "sdk": "29.0.1",
+  "networkProtocol": 29,
+  "wasm": {
+    "bytes": 19754,
+    "sha256": "b0266a69823eb15d4fab29896d56bcf6d53a5336c7d67602d8a92040bbb460d4"
+  },
+  "nativeTests": 19,
+  "wasmTests": 19,
+  "nativeForkTests": 3,
+  "wasmForkTests": 3,
+  "deployedProtocolModeDirectionCases": 28,
+  "quoteTests": 282,
+  "quoteRun": "vitest run tests/unit tests/integration/quote-rabbitmq.test.ts --no-file-parallelism --maxWorkers=1",
+  "quoteTypecheck": "passed",
+  "quoteBuild": "passed",
+  "apiTests": 59,
+  "apiTypecheck": "passed",
+  "apiBuild": "passed",
+  "interfaceTests": 10,
+  "interfaceTypecheck": "passed",
+  "clippy": "passed with -D warnings",
+  "fork": {
+    "capturedAt": "2026-10-23T09:35:58.337Z",
+    "firstLedger": 65092474,
+    "lastLedger": 65092474,
+    "keys": 117,
+    "realProtocolBytecode": true,
+    "realSACBytecode": true,
+    "fixtureBalancesOnly": true
+  },
+  "measurements": [
+    {
+      "protocol": "Soroswap",
+      "reverse": false,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "1761493",
+      "surplusRaw": "0",
+      "cpuInstructions": 4664883,
+      "memoryBytes": 3068286
+    },
+    {
+      "protocol": "Soroswap",
+      "reverse": true,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "56147001",
+      "surplusRaw": "0",
+      "cpuInstructions": 4646641,
+      "memoryBytes": 3073468
+    },
+    {
+      "protocol": "Soroswap",
+      "reverse": false,
+      "exactOut": true,
+      "inputRaw": "56771",
+      "netOutputRaw": "10000",
+      "surplusRaw": "0",
+      "cpuInstructions": 4831129,
+      "memoryBytes": 3068683
+    },
+    {
+      "protocol": "Soroswap",
+      "reverse": true,
+      "exactOut": true,
+      "inputRaw": "1782",
+      "netOutputRaw": "10000",
+      "surplusRaw": "0",
+      "cpuInstructions": 4835589,
+      "memoryBytes": 3073865
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": false,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "1760346",
+      "surplusRaw": "0",
+      "cpuInstructions": 7484971,
+      "memoryBytes": 3462500
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": true,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "56410312",
+      "surplusRaw": "0",
+      "cpuInstructions": 7412882,
+      "memoryBytes": 3467750
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": false,
+      "exactOut": true,
+      "inputRaw": "56807",
+      "netOutputRaw": "10000",
+      "surplusRaw": "0",
+      "cpuInstructions": 9174440,
+      "memoryBytes": 3778938
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": true,
+      "exactOut": true,
+      "inputRaw": "1773",
+      "netOutputRaw": "10000",
+      "surplusRaw": "0",
+      "cpuInstructions": 9118256,
+      "memoryBytes": 3787462
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": false,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "9925007",
+      "surplusRaw": "0",
+      "cpuInstructions": 8082626,
+      "memoryBytes": 3454625
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": true,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "10002424",
+      "surplusRaw": "0",
+      "cpuInstructions": 8001564,
+      "memoryBytes": 3451866
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": false,
+      "exactOut": true,
+      "inputRaw": "10076",
+      "netOutputRaw": "10000",
+      "surplusRaw": "0",
+      "cpuInstructions": 10871741,
+      "memoryBytes": 3885047
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": true,
+      "exactOut": true,
+      "inputRaw": "9997",
+      "netOutputRaw": "10000",
+      "surplusRaw": "0",
+      "cpuInstructions": 11175126,
+      "memoryBytes": 3890397
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": false,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "1760178",
+      "surplusRaw": "0",
+      "cpuInstructions": 17163096,
+      "memoryBytes": 3995621
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": true,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "56415717",
+      "surplusRaw": "0",
+      "cpuInstructions": 13581398,
+      "memoryBytes": 3915130
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": false,
+      "exactOut": true,
+      "inputRaw": "56813",
+      "netOutputRaw": "10000",
+      "surplusRaw": "0",
+      "cpuInstructions": 19251226,
+      "memoryBytes": 4456911
+    },
+    {
+      "protocol": "Aquarius",
+      "reverse": true,
+      "exactOut": true,
+      "inputRaw": "1773",
+      "netOutputRaw": "10000",
+      "surplusRaw": "0",
+      "cpuInstructions": 27327651,
+      "memoryBytes": 4692028
+    },
+    {
+      "protocol": "Phoenix",
+      "reverse": false,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "1758531",
+      "surplusRaw": "0",
+      "cpuInstructions": 5129832,
+      "memoryBytes": 2899990
+    },
+    {
+      "protocol": "Phoenix",
+      "reverse": true,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "55981074",
+      "surplusRaw": "0",
+      "cpuInstructions": 5095985,
+      "memoryBytes": 2906267
+    },
+    {
+      "protocol": "Phoenix",
+      "reverse": false,
+      "exactOut": true,
+      "inputRaw": "10000000",
+      "netOutputRaw": "10000",
+      "surplusRaw": "1752913",
+      "cpuInstructions": 5321829,
+      "memoryBytes": 2899991
+    },
+    {
+      "protocol": "Phoenix",
+      "reverse": true,
+      "exactOut": true,
+      "inputRaw": "10000000",
+      "netOutputRaw": "10000",
+      "surplusRaw": "56111352",
+      "cpuInstructions": 5268750,
+      "memoryBytes": 2906268
+    },
+    {
+      "protocol": "Sushi",
+      "reverse": false,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "1760505",
+      "surplusRaw": "0",
+      "cpuInstructions": 14459655,
+      "memoryBytes": 4715659
+    },
+    {
+      "protocol": "Sushi",
+      "reverse": true,
+      "exactOut": false,
+      "inputRaw": "10000000",
+      "netOutputRaw": "56179538",
+      "surplusRaw": "0",
+      "cpuInstructions": 14041766,
+      "memoryBytes": 4725583
+    },
+    {
+      "protocol": "Sushi",
+      "reverse": false,
+      "exactOut": true,
+      "inputRaw": "10000000",
+      "netOutputRaw": "10000",
+      "surplusRaw": "1754892",
+      "cpuInstructions": 14651259,
+      "memoryBytes": 4715660
+    },
+    {
+      "protocol": "Sushi",
+      "reverse": true,
+      "exactOut": true,
+      "inputRaw": "10000000",
+      "netOutputRaw": "10000",
+      "surplusRaw": "56310313",
+      "cpuInstructions": 14202980,
+      "memoryBytes": 4725584
+    },
+    {
+      "protocol": "Comet",
+      "reverse": false,
+      "exactOut": false,
+      "inputRaw": "1000000",
+      "netOutputRaw": "6153",
+      "surplusRaw": "0",
+      "cpuInstructions": 5201792,
+      "memoryBytes": 2899331
+    },
+    {
+      "protocol": "Comet",
+      "reverse": true,
+      "exactOut": false,
+      "inputRaw": "1000000",
+      "netOutputRaw": "145952924",
+      "surplusRaw": "0",
+      "cpuInstructions": 6380483,
+      "memoryBytes": 2928294
+    },
+    {
+      "protocol": "Comet",
+      "reverse": false,
+      "exactOut": true,
+      "inputRaw": "162344",
+      "netOutputRaw": "1000",
+      "surplusRaw": "0",
+      "cpuInstructions": 5769759,
+      "memoryBytes": 2909951
+    },
+    {
+      "protocol": "Comet",
+      "reverse": true,
+      "exactOut": true,
+      "inputRaw": "7",
+      "netOutputRaw": "1000",
+      "surplusRaw": "0",
+      "cpuInstructions": 5449292,
+      "memoryBytes": 2902426
+    }
+  ],
+  "splitMeasurements": [
+    {
+      "exactOut": false,
+      "inputRaw": "1000000000",
+      "netOutputRaw": "175862447",
+      "cpuInstructions": 16054078,
+      "memoryBytes": 5010517
+    },
+    {
+      "exactOut": true,
+      "inputRaw": "59776",
+      "netOutputRaw": "10000",
+      "cpuInstructions": 18189440,
+      "memoryBytes": 5414824
+    }
+  ],
+  "deployed": false,
+  "fundedNetworkSwap": false,
+  "poolRegistrationRequired": false
+}
