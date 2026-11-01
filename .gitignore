@@ -9,3 +9,4 @@ fuzz/corpus
 mutants.out*
 .DS_Store
 scripts/deploy.sh
+scripts/deploy-aggregator.sh

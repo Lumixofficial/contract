@@ -1,0 +1,17 @@
+{
+  "network": "testnet",
+  "rpc_url": "https://soroban-testnet.stellar.org",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "deployed_at": "2026-11-01T07:31:00Z",
+  "contracts": {
+    "aggregator": {
+      "id": "CABZUFCZ5TJJ2MKMTERVSQDVY4OHMVQTKW5LXKQIZMP4STX3IWN2JRQX",
+      "wasm_hash": "b0266a69823eb15d4fab29896d56bcf6d53a5336c7d67602d8a92040bbb460d4"
+    }
+  },
+  "config": {
+    "admin": "GAYYIO3BTAUKD6577IWODOC6PGDJWGUT4SVUESWABGWYR3KIJUQJ7ECY",
+    "treasury": "GAYYIO3BTAUKD6577IWODOC6PGDJWGUT4SVUESWABGWYR3KIJUQJ7ECY",
+    "fee_bps": 0
+  }
+}

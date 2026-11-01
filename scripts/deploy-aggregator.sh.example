@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+
+# Deploy only the standalone Lumix spot aggregator.
+# Copy to scripts/deploy-aggregator.sh and fill in the profiles below.
+# Uses existing, funded Stellar CLI identities. No private keys belong here.
+# Preview: ./scripts/deploy-aggregator.sh
+# Deploy:  DEPLOY_DRY_RUN=false ./scripts/deploy-aggregator.sh
+# Mainnet: DEPLOY_TARGET=mainnet DEPLOY_DRY_RUN=false ./scripts/deploy-aggregator.sh
+# Every setting can also be overridden through the environment.
+
+set -Eeuo pipefail
+
+DEPLOY_TARGET="${DEPLOY_TARGET:-testnet}"
+DEPLOY_DRY_RUN="${DEPLOY_DRY_RUN:-true}"
+
+# ---------- TESTNET PROFILE ----------
+TESTNET_RPC_URL="${TESTNET_RPC_URL:-https://soroban-testnet.stellar.org}"
+TESTNET_RPC_HEADER="${TESTNET_RPC_HEADER:-}"
+TESTNET_NETWORK_PASSPHRASE="${TESTNET_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
+TESTNET_DEPLOYER_SOURCE="${TESTNET_DEPLOYER_SOURCE:-alice}"
+TESTNET_ADMIN_SOURCE="${TESTNET_ADMIN_SOURCE:-$TESTNET_DEPLOYER_SOURCE}"
+TESTNET_ADMIN_ADDRESS="${TESTNET_ADMIN_ADDRESS:-}"       # blank = derive from admin source
+TESTNET_TREASURY_ADDRESS="${TESTNET_TREASURY_ADDRESS:-}" # blank = admin address
+TESTNET_FEE_BPS="${TESTNET_FEE_BPS:-0}"                   # 0 through 9999; 25 = 0.25%
+TESTNET_ALIAS="${TESTNET_ALIAS:-lumix-testnet-aggregator}"
+
+# ---------- MAINNET PROFILE ----------
+MAINNET_RPC_URL="${MAINNET_RPC_URL:-https://mainnet.sorobanrpc.com}"
+MAINNET_RPC_HEADER="${MAINNET_RPC_HEADER:-}"
+MAINNET_NETWORK_PASSPHRASE="${MAINNET_NETWORK_PASSPHRASE:-Public Global Stellar Network ; September 2015}"
+MAINNET_DEPLOYER_SOURCE="${MAINNET_DEPLOYER_SOURCE:-alice}"
+MAINNET_ADMIN_SOURCE="${MAINNET_ADMIN_SOURCE:-$MAINNET_DEPLOYER_SOURCE}"
+MAINNET_ADMIN_ADDRESS="${MAINNET_ADMIN_ADDRESS:-}"
+MAINNET_TREASURY_ADDRESS="${MAINNET_TREASURY_ADDRESS:-}"
+MAINNET_FEE_BPS="${MAINNET_FEE_BPS:-0}"
+MAINNET_ALIAS="${MAINNET_ALIAS:-lumix-mainnet-aggregator}"
+
+# ---------- OUTPUT SETTINGS ----------
+DEPLOY_OUTPUT_DIR="${DEPLOY_OUTPUT_DIR:-deployments}"
+DEPLOY_MANIFEST_FILE="${DEPLOY_MANIFEST_FILE:-}" # blank = <output>/<target>-aggregator.manifest.json
+
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+case "$DEPLOY_TARGET" in
+  testnet) PROFILE_PREFIX="TESTNET" ;;
+  mainnet) PROFILE_PREFIX="MAINNET" ;;
+  *) die "DEPLOY_TARGET must be testnet or mainnet" ;;
+esac
+case "$DEPLOY_DRY_RUN" in
+  true|false) ;;
+  *) die "DEPLOY_DRY_RUN must be true or false" ;;
+esac
+
+profile_value() {
+  local variable="${PROFILE_PREFIX}_$1"
+  printf '%s' "${!variable}"
+}
+
+RPC_URL="$(profile_value RPC_URL)"
+RPC_HEADER="$(profile_value RPC_HEADER)"
+NETWORK_PASSPHRASE="$(profile_value NETWORK_PASSPHRASE)"
+DEPLOYER_SOURCE="$(profile_value DEPLOYER_SOURCE)"
+ADMIN_SOURCE="$(profile_value ADMIN_SOURCE)"
+ADMIN_ADDRESS="$(profile_value ADMIN_ADDRESS)"
+TREASURY_ADDRESS="$(profile_value TREASURY_ADDRESS)"
+FEE_BPS="$(profile_value FEE_BPS)"
+CONTRACT_ALIAS="$(profile_value ALIAS)"
+
+[[ "$FEE_BPS" =~ ^(0|[1-9][0-9]{0,3})$ ]] || die "FEE_BPS must be an integer from 0 through 9999"
+for command_name in stellar cargo jq; do
+  command -v "$command_name" >/dev/null 2>&1 || die "Required command not found: $command_name"
+done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+AGGREGATOR_DIR="$REPO_ROOT/contracts/lumix-aggregator"
+cd "$REPO_ROOT"
+
+if [[ "$DEPLOY_OUTPUT_DIR" != /* ]]; then
+  DEPLOY_OUTPUT_DIR="$REPO_ROOT/$DEPLOY_OUTPUT_DIR"
+fi
+MANIFEST_FILE="${DEPLOY_MANIFEST_FILE:-$DEPLOY_OUTPUT_DIR/${DEPLOY_TARGET}-aggregator.manifest.json}"
+if [[ "$MANIFEST_FILE" != /* ]]; then
+  MANIFEST_FILE="$REPO_ROOT/$MANIFEST_FILE"
+fi
+if [[ "$DEPLOY_DRY_RUN" == false && -e "$MANIFEST_FILE" ]]; then
+  die "Manifest already exists: $MANIFEST_FILE. Set DEPLOY_MANIFEST_FILE to a new path for a new deployment."
+fi
+
+if [[ -z "$ADMIN_ADDRESS" ]]; then
+  ADMIN_ADDRESS="$(stellar keys address "$ADMIN_SOURCE")"
+fi
+TREASURY_ADDRESS="${TREASURY_ADDRESS:-$ADMIN_ADDRESS}"
+[[ "$ADMIN_ADDRESS" =~ ^[GC][A-Z2-7]{55}$ ]] || die "ADMIN_ADDRESS must be a G... or C... address"
+[[ "$TREASURY_ADDRESS" =~ ^[GC][A-Z2-7]{55}$ ]] || die "TREASURY_ADDRESS must be a G... or C... address"
+
+# This contract has a separate workspace and is excluded from the root build.
+# --out-dir gives a stable Wasm path even when CARGO_TARGET_DIR is overridden.
+stellar contract build --manifest-path "$AGGREGATOR_DIR/Cargo.toml" \
+  --locked --out-dir "$AGGREGATOR_DIR/target/deploy"
+WASM_FILE="$AGGREGATOR_DIR/target/deploy/lumix_aggregator.wasm"
+[[ -s "$WASM_FILE" ]] || die "Missing compiled Wasm: $WASM_FILE"
+
+NETWORK_ARGS=(--rpc-url "$RPC_URL" --network-passphrase "$NETWORK_PASSPHRASE")
+if [[ -n "$RPC_HEADER" ]]; then
+  NETWORK_ARGS+=(--rpc-header "$RPC_HEADER")
+fi
+DEPLOY_ARGS=(contract deploy "${NETWORK_ARGS[@]}" --source-account "$DEPLOYER_SOURCE"
+  --wasm "$WASM_FILE" --alias "$CONTRACT_ALIAS" --
+  --admin "$ADMIN_ADDRESS" --treasury "$TREASURY_ADDRESS" --fee_bps "$FEE_BPS")
+
+printf 'Target: %s\nAdmin: %s\nTreasury: %s\nFee: %s bps\n' \
+  "$DEPLOY_TARGET" "$ADMIN_ADDRESS" "$TREASURY_ADDRESS" "$FEE_BPS"
+if [[ "$DEPLOY_DRY_RUN" == true ]]; then
+  printf 'Dry run complete. Wasm built; no transactions submitted.\n'
+  printf 'Set DEPLOY_DRY_RUN=false to deploy. Manifest: %s\n' "$MANIFEST_FILE"
+  exit 0
+fi
+
+WASM_HASH="$(stellar contract info hash --quiet --wasm "$WASM_FILE")"
+mkdir -p "$(dirname "$MANIFEST_FILE")"
+AGGREGATOR_CONTRACT_ID="$(stellar "${DEPLOY_ARGS[@]}")"
+AGGREGATOR_CONTRACT_ID="$(printf '%s' "$AGGREGATOR_CONTRACT_ID" | tr -d '\r\n')"
+[[ "$AGGREGATOR_CONTRACT_ID" =~ ^C[A-Z2-7]{55}$ ]] || die "Deployment returned an invalid contract ID; check CLI transaction output before rerunning."
+# Print immediately so the ID is available even if writing the manifest fails.
+printf 'AGGREGATOR_CONTRACT_ID=%s\n' "$AGGREGATOR_CONTRACT_ID"
+
+jq -n --arg network "$DEPLOY_TARGET" --arg rpc_url "$RPC_URL" \
+  --arg network_passphrase "$NETWORK_PASSPHRASE" \
+  --arg id "$AGGREGATOR_CONTRACT_ID" --arg wasm_hash "$WASM_HASH" \
+  --arg admin "$ADMIN_ADDRESS" --arg treasury "$TREASURY_ADDRESS" \
+  --argjson fee_bps "$FEE_BPS" --arg deployed_at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+  '{network: $network, rpc_url: $rpc_url, network_passphrase: $network_passphrase,
+    deployed_at: $deployed_at, contracts: {aggregator: {id: $id, wasm_hash: $wasm_hash}},
+    config: {admin: $admin, treasury: $treasury, fee_bps: $fee_bps}}' > "$MANIFEST_FILE"
+printf 'Manifest: %s\n' "$MANIFEST_FILE"

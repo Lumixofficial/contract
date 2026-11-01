@@ -244,7 +244,7 @@ These caps are pool-specific and are not interchangeable with UI price-impact pe
 
 ### 10. A mixed route and split in raw contract JSON
 
-The following uses the amounts from the supplied historical 100 XLM quote, with a permissive intermediate-hop minimum of one base unit. It illustrates the ABI; **re-quote before executing**. Replace `sender` and `deadline` with the actual sender and fresh Unix deadline. Pool approval is required first.
+The following uses the amounts from the supplied historical 100 XLM quote, with a permissive intermediate-hop minimum of one base unit. It illustrates the ABI; **re-quote before executing**. Replace `sender` and `deadline` with the actual sender and fresh Unix deadline. No pool registration is required.
 
 ```json
 {
